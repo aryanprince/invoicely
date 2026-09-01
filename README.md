@@ -14,8 +14,8 @@ Modern, open-source invoice generation platform built with Next.js, tRPC, and Ty
 ### Prerequisites
 
 - **Node.js**: Version 20 or higher
-- **Yarn**: Version 4.9.1 or higher (automatically managed via `packageManager` field)
-- **PostgreSQL**: Database for storing application data
+- **Bun**: Version 1.4.0 (pinned by the `packageManager` field)
+- **Docker**: Current Docker Desktop, OrbStack, or another Compose-compatible engine
 
 ### Installation
 
@@ -29,7 +29,7 @@ Modern, open-source invoice generation platform built with Next.js, tRPC, and Ty
 2. **Install dependencies**
 
    ```bash
-   yarn install
+   bun install --frozen-lockfile
    ```
 
 3. **Set up environment variables**
@@ -39,29 +39,28 @@ Modern, open-source invoice generation platform built with Next.js, tRPC, and Ty
    cp .env.example .env
 
    # Create symlinks for environment variables across apps
-   yarn sys-link
+   bun run sys-link
    ```
 
 4. **Set up the database**
 
    ```bash
-   # Generate database schema
-   yarn db:generate
-
-   # Run database migrations
-   yarn db:migrate
+   # Start PostgreSQL 17 and Adminer, run migrations, then sync dev-only schemas
+   bun run db:up
+   bun run db:migrate
+   bun run db:push
    ```
 
 5. **Start development server**
    ```bash
-   yarn dev
+   bun run dev
    ```
 
 ## 🛠️ Tech Stack
 
 ### Core Framework
 
-- **Next.js 15.3.1** - React framework with App Router
+- **Next.js 15.5.18** - React framework with App Router
 - **React 19** - UI library
 - **TypeScript 5.8.2** - Type-safe JavaScript
 
@@ -83,19 +82,19 @@ Modern, open-source invoice generation platform built with Next.js, tRPC, and Ty
 
 ### Database & Authentication
 
-- **Drizzle ORM 0.43.1** - Type-safe database ORM
-- **Neon Database** - Serverless PostgreSQL
-- **Better Auth 1.2.8** - Modern authentication library
+- **Drizzle ORM 0.45.2** - Type-safe database ORM
+- **PostgreSQL 17** - Local Docker development and hosted PostgreSQL support
+- **Better Auth 1.6.2** - Modern authentication library
 - **Google OAuth** - Social authentication
 
 ### File Storage & PDF
 
 - **Cloudflare R2** - Object storage
-- **React PDF 9.2.1** - PDF generation
+- **React PDF 9.2.1 / @react-pdf/renderer 4.3** - PDF preview and generation
 
 ### Development Tools
 
-- **Turbo 2.5.3** - Monorepo build system
+- **Turbo 2.9.15** - Monorepo build system
 - **ESLint 9** - Code linting
 - **Prettier 3.5.3** - Code formatting
 - **Husky 9.1.7** - Git hooks
@@ -118,6 +117,7 @@ Modern, open-source invoice generation platform built with Next.js, tRPC, and Ty
 ```
 invoicely/
 ├── apps/
+│   ├── cli/                    # Bun CLI for templates, validation, serials, and PDFs
 │   └── web/                    # Next.js web application
 │       ├── src/
 │       │   ├── app/           # App Router pages
@@ -139,6 +139,8 @@ invoicely/
 │   │   │   └── index.ts     # Database exports
 │   │   └── migrations/      # Database migration files
 │   │
+│   ├── invoice-core/        # Shared invoice schemas, calculations, and template model
+│   ├── invoice-pdf/         # Shared browser and Bun/Node PDF renderer
 │   ├── utilities/           # Shared utilities
 │   │   └── src/
 │   │       └── env/        # Environment configuration
@@ -149,7 +151,7 @@ invoicely/
 ├── env-links.sh            # Environment symlink script
 ├── turbo.json             # Turbo configuration
 ├── package.json           # Root package configuration
-└── yarn.lock             # Dependency lock file
+└── bun.lock              # Dependency lock file
 ```
 
 ## 🔧 Environment Variables
@@ -157,8 +159,9 @@ invoicely/
 Create a `.env` file in the root directory with the following variables:
 
 ```bash
-# Database
-DATABASE_URL="postgresql://username:password@localhost:5432/invoicely"
+# Local database from docker-compose.yml
+DATABASE_URL="postgresql://invoicely:invoicely@127.0.0.1:55432/invoicely"
+INVOICELY_ALLOW_REMOTE_TEMPLATES=false
 
 # Authentication
 BETTER_AUTH_SECRET="your-secret-key"
@@ -186,41 +189,73 @@ NEXT_PUBLIC_TRPC_BASE_URL="http://localhost:3000/api/trpc"
 
 The project uses a symlink-based approach for environment management:
 
-- Run `yarn sys-link` to create symlinks from the root `.env` file to all apps
+- Run `bun run sys-link` to create symlinks from the root `.env` file to all apps
 - This ensures consistent environment variables across the monorepo
 - Environment variables are validated using `@t3-oss/env-nextjs` and Zod
+- PostgreSQL listens on `127.0.0.1:55432`; Adminer is available at `http://localhost:58080`
+- In Adminer, use system `PostgreSQL`, server `postgres`, username/password `invoicely`, and database `invoicely`
+- CLI templates are stored in the local database and reject remote database hosts unless `INVOICELY_ALLOW_REMOTE_TEMPLATES=true` is explicitly set
+
+## Invoice CLI
+
+The CLI uses the same Zod domain model, Decimal-backed calculations, template names, fonts, and React PDF renderer as the web app. Personal templates remain in PostgreSQL rather than the repository; committed CLI fixtures are synthetic.
+
+```bash
+# Validate JSON without connecting to PostgreSQL
+bun run invoice validate input --file apps/cli/test/fixtures/example-input.json --json
+
+# Store a named template locally and generate a PDF
+bun run invoice template save --file /private/path/template.json
+bun run invoice generate --template my-template --input /private/path/input.json --output /private/path/invoice.pdf --json
+```
+
+See [apps/cli/README.md](apps/cli/README.md) for all template, validation, serial, PDF, privacy, JSON-output, and exit-code details. Run `bun run db:push` once after local database setup to create the private template table; generated migration files remain maintainer-managed and are not committed.
 
 ## 📜 Available Scripts
 
 ### Root Level Scripts
 
 ```bash
-yarn dev              # Start development servers for all apps
-yarn build            # Build all apps for production
-yarn start            # Start production servers
-yarn lint             # Lint all packages
-yarn lint:fix         # Fix linting issues
-yarn format           # Format code with Prettier
-yarn check-types      # Type check all packages
+bun run dev              # Start development servers for all apps
+bun run build            # Build all apps for production
+bun run start            # Start production servers
+bun run lint             # Lint all packages
+bun run lint:fix         # Fix linting issues
+bun run format           # Format code with Prettier
+bun run check-types      # Type check all packages
+bun run test             # Run CLI and shared-domain tests
+bun run invoice help     # Show invoice CLI commands
 
 # Database Operations
-yarn db:generate      # Generate database schema
-yarn db:migrate       # Run database migrations
-yarn db:push          # Push schema changes to database
-yarn db:studio        # Open Drizzle Studio
+bun run db:up            # Start PostgreSQL and Adminer and wait for health
+bun run db:down          # Stop local services without deleting data
+bun run db:logs          # Follow PostgreSQL logs
+bun run db:check         # Verify application-level database connectivity
+bun run db:generate      # Generate database schema
+bun run db:migrate       # Run database migrations
+bun run db:push          # Push schema changes to database
+bun run db:studio        # Open Drizzle Studio
 
 # Utility Scripts
-yarn sys-link         # Create environment symlinks
-yarn reset-repo       # Clean all build artifacts
+bun run sys-link         # Create environment symlinks
+bun run reset-repo       # Clean all build artifacts
 ```
 
 ### App-Specific Scripts (apps/web)
 
 ```bash
-yarn dev              # Start Next.js development server
-yarn build            # Build for production
-yarn start            # Start production server
-yarn lint             # Lint the web app
+bun run dev              # Start Next.js development server
+bun run build            # Build for production
+bun run start            # Start production server
+bun run lint             # Lint the web app
+```
+
+### App-Specific Scripts (apps/cli)
+
+```bash
+bun run invoice help     # Run the CLI from the repository root
+bun run --cwd apps/cli test
+bun run --cwd apps/cli build
 ```
 
 ## 🎯 Naming Conventions

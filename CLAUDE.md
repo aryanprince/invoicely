@@ -7,33 +7,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Run from the repo root (Turbo orchestrates the workspaces):
 
 ```bash
-yarn dev            # Start all apps in dev (Next.js with --turbopack)
-yarn build          # Production build of all apps
-yarn start          # Start production servers
-yarn lint           # Lint all packages
-yarn lint:fix       # eslint . --fix
-yarn format         # prettier --write across the repo
-yarn check-types    # Type-check via turbo
+bun run dev            # Start all apps in dev (Next.js with --turbopack)
+bun run build          # Production build of all apps
+bun run start          # Start production servers
+bun run lint           # Lint all packages
+bun run lint:fix       # eslint . --fix
+bun run format         # prettier --write across the repo
+bun run check-types    # Type-check via turbo
+bun run test           # Bun tests for CLI and shared invoice domain
+bun run invoice help   # Agent-oriented invoice CLI
 
-# Database (Drizzle + Neon Postgres) — all read DATABASE_URL via dotenv-cli
-yarn db:generate    # Generate SQL migrations from schema changes
-yarn db:migrate     # Apply migrations
-yarn db:push        # Push schema directly (dev only)
-yarn db:studio      # Open Drizzle Studio
+# Database (Drizzle + PostgreSQL) — all read DATABASE_URL via dotenv-cli
+bun run db:up          # Start local PostgreSQL 17 + Adminer and wait for health
+bun run db:down        # Stop local database services without deleting data
+bun run db:logs        # Follow local PostgreSQL logs
+bun run db:check       # Verify application-level database connectivity
+bun run db:generate    # Generate SQL migrations from schema changes
+bun run db:migrate     # Apply migrations
+bun run db:push        # Push schema directly (dev only)
+bun run db:studio      # Open Drizzle Studio
 ```
 
-There is **no test runner** configured in this repo — do not assume `yarn test` exists.
+Tests use Bun's built-in runner and are orchestrated by Turbo. Keep fixtures synthetic; never commit personal invoice or template data.
 
 ### First-time setup gotcha
 
-Environment variables live in a single root `.env`. Run `yarn sys-link` to symlink it into each app under `apps/*` (see `env-links.sh`). The dev server will fail env validation without this step. Env is validated by Zod via `@t3-oss/env-nextjs` in `packages/utilities/src/env`; add new vars there **and** to `turbo.json`'s `build.env` list if they're needed at build time.
+Environment variables live in a single root `.env`. Run `bun run sys-link` to symlink it into each app under `apps/*` (see `env-links.sh`). The dev server will fail env validation without this step. Env is validated by Zod via `@t3-oss/env-nextjs` in `packages/utilities/src/env`; add new vars there **and** to `turbo.json`'s `build.env` list if they're needed at build time.
 
 ## Architecture
 
-Yarn 4 workspaces + Turborepo monorepo:
+Bun 1.4 workspaces + Turborepo monorepo:
 
-- `apps/web` — the Next.js 15 App Router application (the only app)
-- `packages/db` — Drizzle ORM schema, migrations, and the Neon Postgres client (`@invoicely/db`)
+- `apps/web` — the Next.js 15 App Router application
+- `apps/cli` — Bun CLI for template management, validation, serial reservation, and PDF output
+- `packages/db` — Drizzle ORM schema, migrations, and the Postgres.js client (`@invoicely/db`)
+- `packages/invoice-core` — shared Zod schemas, template model, serial logic, and Decimal-backed calculations
+- `packages/invoice-pdf` — shared React PDF components plus separate browser Blob and Bun/Node buffer entry points
 - `packages/utilities` — shared env config (`@invoicely/utilities`)
 - `packages/eslint-config`, `packages/typescript-config` — shared config
 
@@ -66,11 +75,13 @@ Mutations wrap their logic in `Effect.gen(function* () { ... })`, `yield*` tagge
 
 Money/amounts use **Decimal.js** end to end via the custom Drizzle `Numeric` type in `packages/db/src/custom/decimal.ts` (stores `numeric`, hydrates to `Decimal`). Never use JS floats for monetary values.
 
+CLI named templates live in `local_invoice_templates`. Repository APIs reject non-loopback database hosts unless `INVOICELY_ALLOW_REMOTE_TEMPLATES=true`; keep that opt-in explicit. Apply this development-only table with `bun run db:push` and do not commit generated migration artifacts.
+
 Auth uses **Better Auth** with the Drizzle adapter and Google OAuth (`lib/auth.ts` server / `lib/client-auth.ts` client). Custom model names (`users`/`accounts`/`sessions`/`verifications`) and `generateId: false` (the app supplies UUIDs). Route handler at `app/api/auth/[...all]/route.ts`.
 
 ### PDF generation
 
-Invoices render to PDF with `@react-pdf/renderer` / `react-pdf`. PDF components live in `components/pdf`; `lib/invoice` holds base64/blob/image conversion helpers; `providers/pdf-worker-provider.tsx` sets up the worker. Templates are keyed by name (`default`, `vercel`) in the invoice theme.
+Invoices render to PDF with `@react-pdf/renderer` / `react-pdf`. Shared PDF components and browser/Bun render entry points live in `packages/invoice-pdf`; the web app keeps image conversion helpers under `lib/invoice` and configures PDF preview workers in `providers/pdf-worker-provider.tsx`. Templates are keyed by name (`default`, `vercel`) in the shared invoice theme.
 
 ### Marketing / blog
 
@@ -84,7 +95,7 @@ Uses `fumadocs-ui` + `content-collections` (MDX). Content sources are in `apps/w
 - Directories use `lowercase-with-dashes`. Use the `function` keyword for pure functions; prefer interfaces over types; avoid enums (use maps / `pgEnum`).
 - Favor React Server Components; minimize `use client`, `useEffect`, `setState`.
 - Commit/PR title format: `type(scope): description` (`feat:`, `fix:`, `chore:`). Branch names: `profilename/featurename`.
-- The Husky pre-commit hook runs `turbo run lint -- --fix` then `yarn format`.
+- The Husky pre-commit hook runs `turbo run lint -- --fix` then `bun run format`.
 
 ## Important constraints
 

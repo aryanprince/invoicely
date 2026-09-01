@@ -4,31 +4,37 @@
   "private": true,
   "license": "MIT",
   "engines": {
+    "bun": ">=1.4.0",
     "node": ">=20"
   },
-  "packageManager": "yarn@4.9.1",
+  "packageManager": "bun@1.4.0",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
     "sys-link": "./env-links.sh",
-    "postinstall": "patch-package",
     "reset-repo": "git clean -Xdf",
     "prepare": "husky",
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "dev:scan": "turbo run dev & npx react-scan@latest localhost:3000",
+    "dev:scan": "turbo run dev & bunx react-scan@latest localhost:3000",
     "start": "turbo run start",
     "production": "turbo run build && turbo run start",
     "lint": "turbo run lint",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
+    "test": "turbo run test",
+    "invoice": "bun run apps/cli/src/bin.ts",
+    "db:check": "dotenv -- turbo run db:check",
     "db:generate": "dotenv -- turbo run db:generate",
     "db:migrate": "dotenv -- turbo run db:migrate",
     "db:push": "dotenv -- turbo run db:push",
-    "db:studio": "dotenv -- turbo run db:studio"
+    "db:studio": "dotenv -- turbo run db:studio",
+    "db:up": "docker compose up --detach --wait postgres adminer",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs --follow postgres"
   },
   "devDependencies": {
     "@effect/language-service": "^0.23.3",
@@ -36,22 +42,13 @@
     "@invoicely/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
     "dotenv-cli": "^8.0.0",
+    "drizzle-kit": "^0.31.10",
     "husky": "^9.1.7",
-    "patch-package": "^8.0.0",
     "prettier": "^3.5.3",
     "prettier-plugin-sort-imports": "^1.8.7",
     "prettier-plugin-tailwindcss": "^0.6.11",
     "turbo": "^2.9.15",
     "typescript": "5.8.2"
-  },
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.1055.0",
-    "@t3-oss/env-nextjs": "^0.13.4",
-    "@trpc/react-query": "^11.17.0",
-    "cookie": "^1.0.2",
-    "decimal.js": "^10.5.0",
-    "drizzle-kit": "^0.31.10",
-    "effect": "^3.21.2"
   },
   "resolutions": {
     "fast-xml-parser": "^4.5.4",
@@ -75,5 +72,8 @@
     "playwright": "^1.55.1",
     "tar-fs": "^2.1.4",
     "yaml": "^2.8.3"
+  },
+  "patchedDependencies": {
+    "@react-pdf/font@4.0.2": "patches/@react-pdf%2Ffont@4.0.2.patch"
   }
 }

@@ -1,11 +1,12 @@
 {
   "$schema": "https://turborepo.com/schema.json",
+  "globalEnv": ["INVOICELY_ALLOW_REMOTE_TEMPLATES", "NODE_ENV"],
   "ui": "tui",
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
       "env": [
         "BETTER_AUTH_SECRET",
         "BETTER_AUTH_URL",
@@ -33,9 +34,19 @@
       "dependsOn": ["^lint"]
     },
     "check-types": {
-      "dependsOn": ["^check-types"]
+      "dependsOn": ["^check-types"],
+      "outputs": [".content-collections/**", "tsconfig.tsbuildinfo"]
+    },
+    "test": {
+      "dependsOn": ["^test"],
+      "outputs": []
     },
 
+    "db:check": {
+      "cache": false,
+      "env": ["DATABASE_URL"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"]
+    },
     "db:generate": {
       "cache": false,
       "env": ["DATABASE_URL"],
