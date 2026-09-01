@@ -43,12 +43,16 @@ export const columns = [
   columnHelper.accessor((row) => row.type, {
     id: "type",
     header: ({ column }) => <HeaderColumnButton column={column}>Storage</HeaderColumnButton>,
-    cell: ({ row }) => (
-      <Badge variant={row.original.type === "local" ? "default" : "rose"} icon>
-        {row.original.type === "local" ? <HardDriveIcon /> : <DatabaseIcon />}
-        {row.original.type === "local" ? "Local" : "Server"}
-      </Badge>
-    ),
+    cell: ({ row }) => {
+      const isCliRecord = row.original.origin === "cli";
+
+      return (
+        <Badge variant={isCliRecord ? "gray" : row.original.type === "local" ? "default" : "rose"} icon>
+          {row.original.type === "local" ? <HardDriveIcon /> : <DatabaseIcon />}
+          {isCliRecord ? "CLI" : row.original.type === "local" ? "Local" : "Server"}
+        </Badge>
+      );
+    },
     enableSorting: false,
   }),
 
@@ -135,7 +139,11 @@ export const columns = [
     id: "actions",
     header: ({ column }) => <HeaderColumnButton column={column}>Actions</HeaderColumnButton>,
     cell: ({ row }) => {
-      const { id, type, status, paidAt, invoiceFields } = row.original;
+      const { id, type, origin, status, paidAt, invoiceFields } = row.original;
+
+      if (origin === "cli") {
+        return <Badge variant="gray">CLI managed</Badge>;
+      }
 
       return (
         <div key={id} className="flex flex-row items-center gap-2">

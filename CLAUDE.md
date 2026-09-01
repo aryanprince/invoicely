@@ -39,7 +39,7 @@ Environment variables live in a single root `.env`. Run `bun run sys-link` to sy
 Bun 1.4 workspaces + Turborepo monorepo:
 
 - `apps/web` — the Next.js 15 App Router application
-- `apps/cli` — Bun CLI for template management, validation, serial reservation, and PDF output
+- `apps/cli` — Bun CLI for private-local template/invoice records, validation, serial reservation, and PDF output
 - `packages/db` — Drizzle ORM schema, migrations, and the Postgres.js client (`@invoicely/db`)
 - `packages/invoice-core` — shared Zod schemas, template model, serial logic, and Decimal-backed calculations
 - `packages/invoice-pdf` — shared React PDF components plus separate browser Blob and Bun/Node buffer entry points
@@ -75,7 +75,7 @@ Mutations wrap their logic in `Effect.gen(function* () { ... })`, `yield*` tagge
 
 Money/amounts use **Decimal.js** end to end via the custom Drizzle `Numeric` type in `packages/db/src/custom/decimal.ts` (stores `numeric`, hydrates to `Decimal`). Never use JS floats for monetary values.
 
-CLI named templates live in `local_invoice_templates`. Repository APIs reject non-loopback database hosts unless `INVOICELY_ALLOW_REMOTE_TEMPLATES=true`; keep that opt-in explicit. Apply this development-only table with `bun run db:push` and do not commit generated migration artifacts.
+CLI named templates live in `local_invoice_templates`, and complete private-local invoice records live in `local_invoice_records`. Repository APIs reject non-loopback database hosts unless `INVOICELY_ALLOW_REMOTE_TEMPLATES=true`; keep that opt-in explicit. Apply these development-only tables with `bun run db:push` and do not commit generated migration artifacts.
 
 Auth uses **Better Auth** with the Drizzle adapter and Google OAuth (`lib/auth.ts` server / `lib/client-auth.ts` client). Custom model names (`users`/`accounts`/`sessions`/`verifications`) and `generateId: false` (the app supplies UUIDs). Route handler at `app/api/auth/[...all]/route.ts`.
 

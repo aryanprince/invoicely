@@ -1,6 +1,6 @@
 # Invoicely CLI
 
-The Bun CLI validates invoice JSON, manages private named templates in local PostgreSQL, reserves serial numbers, and renders the same PDF templates as the web app.
+The Bun CLI validates invoice JSON, manages private named templates and complete invoice records in local PostgreSQL, reserves serial numbers, and renders the same PDF templates as the web app.
 
 Run it from the repository root:
 
@@ -18,9 +18,9 @@ bun run db:migrate
 bun run db:push
 ```
 
-The `local_invoice_templates` table stores sender details, payment information, theme settings, and the next serial number. Template data is not committed to Git. Keep personal template JSON outside this repository, for example under a private configuration directory.
+The `local_invoice_templates` table stores sender details, payment information, theme settings, and the next serial number. `local_invoice_records` stores complete validated invoices with a stable ID and unique invoice number. This private CLI data is not committed to Git. Keep personal template and input JSON outside this repository, for example under a private configuration directory.
 
-Template commands reject a non-loopback `DATABASE_URL` by default. Set `INVOICELY_ALLOW_REMOTE_TEMPLATES=true` only when you deliberately want to store these private templates in a remote database. The web app and its hosted PostgreSQL connection do not otherwise depend on the CLI template table.
+Template and record commands reject a non-loopback `DATABASE_URL` by default. Set `INVOICELY_ALLOW_REMOTE_TEMPLATES=true` only when you deliberately want to store this private CLI data in a remote database. The web app and its hosted PostgreSQL connection do not otherwise depend on the CLI tables.
 
 The committed files in `test/fixtures` contain synthetic data only. They are examples and automated test inputs, not user templates.
 
@@ -51,6 +51,31 @@ bun run invoice serial next my-template --json
 ```
 
 `serial next` transactionally returns the current value and advances the stored value. Leading zeroes are preserved.
+
+## Store invoice records
+
+Create a complete invoice record from a template and generation input:
+
+```bash
+bun run invoice record create \
+  --template my-template \
+  --input /private/path/invoice-input.json \
+  --serial 0123 \
+  --json
+```
+
+Without `--serial`, record creation locks the template, inserts the invoice, and advances the serial in one transaction. With `--serial`, the historical number is used without changing the template sequence. Invoice numbers are unique: rerunning the same create command returns `INVOICE_EXISTS` and does not create a duplicate.
+
+List, inspect, and re-render stored records:
+
+```bash
+bun run invoice record list --json
+bun run invoice record show INV-0123 --json
+bun run invoice record render INV-0123 --output /private/path/INV-0123.pdf --json
+bun run invoice record delete INV-0123 --json
+```
+
+`record list` returns summaries. `record show --json` intentionally prints the complete private invoice. `record render` loads its data from PostgreSQL rather than rebuilding it from a possibly changed template. `record delete` removes exactly one record by stable ID or invoice number and returns a not-found error when there is no match.
 
 ## Generate a PDF
 

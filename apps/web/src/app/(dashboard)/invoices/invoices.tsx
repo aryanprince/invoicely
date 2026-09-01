@@ -20,16 +20,26 @@ const InvoicesPage = () => {
     enabled: !!session?.user, // Only fetch if user is logged in
   });
 
+  // Fetching records created by the local CLI
+  const localRecordData = useQuery(trpc.invoice.listLocal.queryOptions());
+
   // Fetching Invoices from the LocalDB
   const idbData = useQuery({
     queryKey: ["idb-invoices"],
     queryFn: getAllInvoices,
   });
 
-  const isLoading = trpcData.isLoading || idbData.isLoading;
+  const isLoading = trpcData.isLoading || localRecordData.isLoading || idbData.isLoading;
 
-  // Combine and ensure data is an array
-  const data = [...(trpcData.data ?? []), ...(idbData.data ?? [])];
+  // Combine every store and avoid rendering the same record more than once.
+  const data = Array.from(
+    new Map(
+      [...(trpcData.data ?? []), ...(localRecordData.data ?? []), ...(idbData.data ?? [])].map((invoice) => [
+        invoice.id,
+        invoice,
+      ]),
+    ).values(),
+  );
 
   return (
     <div className="dash-page gap-4 p-4">
@@ -41,6 +51,19 @@ const InvoicesPage = () => {
           </AlertDescription>
           <AlertButtonGroup>
             <Button onClick={() => trpcData.refetch()} variant="destructive" size="xs">
+              Retry
+            </Button>
+          </AlertButtonGroup>
+        </Alert>
+      )}
+      {localRecordData.isError && (
+        <Alert variant="destructive">
+          <AlertTitle>Local CLI Fetch Failed!</AlertTitle>
+          <AlertDescription>
+            We were unable to fetch invoices created by the local CLI. Confirm the app is using the local database.
+          </AlertDescription>
+          <AlertButtonGroup>
+            <Button onClick={() => localRecordData.refetch()} variant="destructive" size="xs">
               Retry
             </Button>
           </AlertButtonGroup>

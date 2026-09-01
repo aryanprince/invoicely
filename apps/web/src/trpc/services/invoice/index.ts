@@ -3,12 +3,14 @@ import { insertInvoice } from "./insertInvoice";
 import { deleteInvoice } from "./deleteInvoice";
 import { createTRPCRouter } from "@/trpc/init";
 import { listInvoices } from "./listInvoices";
+import { listLocalInvoices } from "./listLocalInvoices";
 import { migrateToDb } from "./migrateToDb";
 import { editInvoice } from "./editInvoice";
 import { getInvoice } from "./getInvoice";
 
 export const invoiceRouter = createTRPCRouter({
   list: listInvoices,
+  listLocal: listLocalInvoices,
   insert: insertInvoice,
   updateStatus: updateInvoiceStatus,
   delete: deleteInvoice,
