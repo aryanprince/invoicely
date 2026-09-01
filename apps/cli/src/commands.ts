@@ -7,10 +7,12 @@ import {
   type NamedInvoiceTemplate,
 } from "@invoicely/invoice-core";
 import { assertOutputAvailable, type CliIo, readJsonFile, writeBinaryFile } from "./io";
+import type { LocalInvoiceRecord } from "@invoicely/db/local-invoices";
 import { renderInvoicePdfToBuffer } from "@invoicely/invoice-pdf/node";
 import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 import { CliError, createValidationError } from "./errors";
 import { withTemplateStore } from "./template-store";
+import { withInvoiceStore } from "./invoice-store";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { CLI_HELP } from "./help";
@@ -18,6 +20,11 @@ import { CLI_HELP } from "./help";
 interface CommandContext {
   io: CliIo;
   json: boolean;
+  withInvoiceStore: typeof withInvoiceStore;
+}
+
+export interface CliDependencies {
+  withInvoiceStore?: typeof withInvoiceStore;
 }
 
 interface CommandResult {
@@ -27,10 +34,10 @@ interface CommandResult {
 
 const invoicePdfFontDirectory = fileURLToPath(new URL("../../web/public/fonts", import.meta.url));
 
-export async function executeCli(args: string[], io: CliIo): Promise<number> {
+export async function executeCli(args: string[], io: CliIo, dependencies: CliDependencies = {}): Promise<number> {
   const json = args.includes("--json");
   const commandArgs = args.filter((argument) => argument !== "--json");
-  const context = { io, json };
+  const context = { io, json, withInvoiceStore: dependencies.withInvoiceStore ?? withInvoiceStore };
 
   try {
     const result = await dispatchCommand(commandArgs, context);
@@ -61,6 +68,10 @@ async function dispatchCommand(args: string[], context: CommandContext): Promise
 
   if (command === "validate") {
     return runValidateCommand(action, rest, context);
+  }
+
+  if (command === "record") {
+    return runRecordCommand(action, rest, context);
   }
 
   if (command === "serial") {
@@ -227,6 +238,112 @@ async function runValidateCommand(
   throw usageError("validate requires one of: invoice, input, template");
 }
 
+async function runRecordCommand(
+  action: string | undefined,
+  args: string[],
+  context: CommandContext,
+): Promise<CommandResult> {
+  if (action === "list") {
+    assertNoArguments(args);
+    const records = await context.withInvoiceStore((store) => store.listLocalInvoiceRecords());
+    const summaries = records.map(toInvoiceRecordSummary);
+
+    return {
+      human: summaries.length
+        ? summaries
+            .map((record) => `${record.invoiceNumber}\t${record.total} ${record.currency}\t${record.id}`)
+            .join("\n")
+        : "No local invoice records found.",
+      value: { ok: true, records: summaries },
+    };
+  }
+
+  if (action === "show") {
+    const identifier = requireSinglePositional(args, "record show requires an invoice ID or invoice number");
+    const record = await getRequiredInvoiceRecord(identifier, context);
+
+    return {
+      human: `${record.invoiceNumber}\nID: ${record.id}\nTemplate: ${record.templateName}`,
+      value: { ok: true, record },
+    };
+  }
+
+  if (action === "delete") {
+    const identifier = requireSinglePositional(args, "record delete requires an invoice ID or invoice number");
+    const deleted = await context.withInvoiceStore((store) => store.deleteLocalInvoiceRecord(identifier));
+
+    if (!deleted) {
+      throw new CliError(4, "INVOICE_NOT_FOUND", `Local invoice record "${identifier}" was not found`);
+    }
+
+    return {
+      human: `Deleted local invoice record ${identifier}.`,
+      value: { deleted: true, identifier, ok: true },
+    };
+  }
+
+  if (action === "create") {
+    const { values, positionals } = parseCommandArgs(args, {
+      input: { type: "string" },
+      serial: { type: "string" },
+      template: { type: "string" },
+    });
+    assertNoPositionals(positionals);
+    const templateName = requireStringOption(values.template, "record create requires --template <name>");
+    const inputFile = requireStringOption(values.input, "record create requires --input <input.json>");
+    const inputCandidate = await readJsonFile(context.io, inputFile);
+    const inputResult = invoiceGenerationInputSchema.safeParse(inputCandidate);
+
+    if (!inputResult.success) {
+      throw createValidationError("Invoice generation input", inputResult.error.issues);
+    }
+
+    const explicitSerial = parseOptionalSerial(values.serial);
+    const record = await context.withInvoiceStore((store) =>
+      store.createLocalInvoiceRecord({
+        templateName,
+        input: inputResult.data,
+        serialNumber: explicitSerial,
+      }),
+    );
+    const summary = toInvoiceRecordSummary(record);
+
+    return {
+      human: `Created ${record.invoiceNumber} (${record.id}).`,
+      value: { ok: true, record: summary },
+    };
+  }
+
+  if (action === "render") {
+    const { values, positionals } = parseCommandArgs(args, {
+      force: { type: "boolean", default: false },
+      output: { type: "string" },
+    });
+    const identifier = requireSinglePositional(positionals, "record render requires an invoice ID or invoice number");
+    const outputFile = requireStringOption(values.output, "record render requires --output <invoice.pdf>");
+    await assertOutputAvailable(context.io, outputFile, values.force === true);
+    const record = await getRequiredInvoiceRecord(identifier, context);
+    const buffer = await renderInvoicePdfToBuffer({
+      fontDirectory: invoicePdfFontDirectory,
+      invoiceData: record.data,
+    });
+    const absoluteOutput = await writeBinaryFile(context.io, outputFile, buffer, values.force === true);
+    const checksum = createHash("sha256").update(buffer).digest("hex");
+
+    return {
+      human: `Rendered ${record.invoiceNumber} at ${absoluteOutput}`,
+      value: {
+        ok: true,
+        output: absoluteOutput,
+        record: toInvoiceRecordSummary(record),
+        sha256: checksum,
+      },
+    };
+  }
+
+  throw usageError("record requires one of: list, show, create, render, delete");
+}
+
 async function runSerialCommand(action: string | undefined, args: string[]): Promise<CommandResult> {
   if (action === "peek") {
     const name = requireSinglePositional(args, "serial peek requires a template name");
@@ -293,13 +410,7 @@ async function runGenerateCommand(args: string[], context: CommandContext): Prom
     throw createValidationError("Invoice generation input", inputResult.error.issues);
   }
 
-  const explicitSerial = values.serial;
-  if (explicitSerial !== undefined) {
-    const serialResultValue = namedInvoiceTemplateSchema.shape.nextSerialNumber.safeParse(explicitSerial);
-    if (!serialResultValue.success) {
-      throw createValidationError("Serial number", serialResultValue.error.issues);
-    }
-  }
+  const explicitSerial = parseOptionalSerial(values.serial);
 
   await assertOutputAvailable(context.io, outputFile, values.force === true);
 
@@ -365,6 +476,16 @@ async function getRequiredTemplate(name: string): Promise<NamedInvoiceTemplate> 
   return template;
 }
 
+async function getRequiredInvoiceRecord(identifier: string, context: CommandContext): Promise<LocalInvoiceRecord> {
+  const record = await context.withInvoiceStore((store) => store.getLocalInvoiceRecord(identifier));
+
+  if (!record) {
+    throw new CliError(4, "INVOICE_NOT_FOUND", `Local invoice record "${identifier}" was not found`);
+  }
+
+  return record;
+}
+
 function parseCommandArgs<const Options extends ParseArgsOptionsConfig>(args: string[], options: Options) {
   try {
     return parseArgs({ args, allowPositionals: true, options, strict: true });
@@ -388,6 +509,19 @@ function requireStringOption(value: string | boolean | undefined, message: strin
   return value;
 }
 
+function parseOptionalSerial(value: string | boolean | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const result = namedInvoiceTemplateSchema.shape.nextSerialNumber.safeParse(value);
+  if (!result.success) {
+    throw createValidationError("Serial number", result.error.issues);
+  }
+
+  return result.data;
+}
+
 function assertNoArguments(args: string[]): void {
   if (args.length > 0) {
     throw usageError(`Unexpected arguments: ${args.join(" ")}`);
@@ -405,6 +539,24 @@ function toTemplateSummary(template: NamedInvoiceTemplate): Record<string, unkno
     name: template.name,
     nextSerialNumber: template.nextSerialNumber,
     schemaVersion: template.schemaVersion,
+  };
+}
+
+function toInvoiceRecordSummary(record: LocalInvoiceRecord): Record<string, string | number> {
+  const totals = calculateInvoiceTotals(record.data);
+
+  return {
+    id: record.id,
+    schemaVersion: record.schemaVersion,
+    template: record.templateName,
+    invoiceNumber: record.invoiceNumber,
+    serialNumber: record.data.invoiceDetails.serialNumber,
+    date: record.data.invoiceDetails.date.toISOString(),
+    currency: record.data.invoiceDetails.currency,
+    itemCount: record.data.items.length,
+    subtotal: totals.subtotal.toFixed(2),
+    total: totals.total.toFixed(2),
+    createdAt: record.createdAt.toISOString(),
   };
 }
 
@@ -451,8 +603,24 @@ function normalizeError(error: unknown): CliError {
     return error;
   }
 
+  if (hasErrorCode(error, "LOCAL_INVOICE_EXISTS")) {
+    return new CliError(5, "INVOICE_EXISTS", error.message);
+  }
+
+  if (hasErrorCode(error, "LOCAL_INVOICE_NOT_FOUND")) {
+    return new CliError(4, "INVOICE_NOT_FOUND", error.message);
+  }
+
+  if (hasErrorCode(error, "LOCAL_TEMPLATE_NOT_FOUND")) {
+    return new CliError(4, "TEMPLATE_NOT_FOUND", error.message);
+  }
+
   const message = error instanceof Error ? error.message : String(error);
   return new CliError(5, "RUNTIME_ERROR", message);
+}
+
+function hasErrorCode(error: unknown, code: string): error is Error & { code: string } {
+  return error instanceof Error && "code" in error && error.code === code;
 }
 
 function usageError(message: string): CliError {

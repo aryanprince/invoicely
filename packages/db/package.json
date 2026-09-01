@@ -28,6 +28,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./local-invoices": "./src/local-invoices.ts",
     "./local-invoice-templates": "./src/local-invoice-templates.ts",
     "./schema/*": "./src/schema/*.ts"
   }

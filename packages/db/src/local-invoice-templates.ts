@@ -1,29 +1,12 @@
 import { incrementSerialNumber, namedInvoiceTemplateSchema, type NamedInvoiceTemplate } from "@invoicely/invoice-core";
 import { localInvoiceTemplates } from "./schema/local-invoice-template";
+import { assertLocalInvoiceDatabase } from "./local-database";
 import { eq } from "drizzle-orm";
 import { db } from "./index";
 
 export interface ReservedInvoiceSerial {
   serialNumber: string;
   template: NamedInvoiceTemplate;
-}
-
-function assertLocalTemplateDatabase(): void {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL environment variable is not set");
-  }
-
-  const hostname = new URL(databaseUrl).hostname;
-  const isLoopback = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
-  const remoteStorageAllowed = process.env.INVOICELY_ALLOW_REMOTE_TEMPLATES === "true";
-
-  if (!isLoopback && !remoteStorageAllowed) {
-    throw new Error(
-      "Invoice templates are private-local by default. Set INVOICELY_ALLOW_REMOTE_TEMPLATES=true to use a non-loopback DATABASE_URL.",
-    );
-  }
 }
 
 function parseTemplateRow(row: typeof localInvoiceTemplates.$inferSelect): NamedInvoiceTemplate {
@@ -36,7 +19,7 @@ function parseTemplateRow(row: typeof localInvoiceTemplates.$inferSelect): Named
 }
 
 export async function saveLocalInvoiceTemplate(template: NamedInvoiceTemplate): Promise<NamedInvoiceTemplate> {
-  assertLocalTemplateDatabase();
+  assertLocalInvoiceDatabase();
   const parsedTemplate = namedInvoiceTemplateSchema.parse(template);
   const [savedTemplate] = await db
     .insert(localInvoiceTemplates)
@@ -65,21 +48,21 @@ export async function saveLocalInvoiceTemplate(template: NamedInvoiceTemplate): 
 }
 
 export async function listLocalInvoiceTemplates(): Promise<NamedInvoiceTemplate[]> {
-  assertLocalTemplateDatabase();
+  assertLocalInvoiceDatabase();
   const templates = await db.select().from(localInvoiceTemplates).orderBy(localInvoiceTemplates.name);
 
   return templates.map(parseTemplateRow);
 }
 
 export async function getLocalInvoiceTemplate(name: string): Promise<NamedInvoiceTemplate | null> {
-  assertLocalTemplateDatabase();
+  assertLocalInvoiceDatabase();
   const [template] = await db.select().from(localInvoiceTemplates).where(eq(localInvoiceTemplates.name, name)).limit(1);
 
   return template ? parseTemplateRow(template) : null;
 }
 
 export async function deleteLocalInvoiceTemplate(name: string): Promise<boolean> {
-  assertLocalTemplateDatabase();
+  assertLocalInvoiceDatabase();
   const deletedTemplates = await db
     .delete(localInvoiceTemplates)
     .where(eq(localInvoiceTemplates.name, name))
@@ -92,7 +75,7 @@ export async function setLocalInvoiceTemplateSerial(
   name: string,
   nextSerialNumber: string,
 ): Promise<NamedInvoiceTemplate> {
-  assertLocalTemplateDatabase();
+  assertLocalInvoiceDatabase();
   const validatedSerial = namedInvoiceTemplateSchema.shape.nextSerialNumber.parse(nextSerialNumber);
   const [updatedTemplate] = await db
     .update(localInvoiceTemplates)
@@ -108,7 +91,7 @@ export async function setLocalInvoiceTemplateSerial(
 }
 
 export async function reserveLocalInvoiceTemplateSerial(name: string): Promise<ReservedInvoiceSerial> {
-  assertLocalTemplateDatabase();
+  assertLocalInvoiceDatabase();
 
   return db.transaction(async (transaction) => {
     const [template] = await transaction

@@ -194,7 +194,7 @@ The project uses a symlink-based approach for environment management:
 - Environment variables are validated using `@t3-oss/env-nextjs` and Zod
 - PostgreSQL listens on `127.0.0.1:55432`; Adminer is available at `http://localhost:58080`
 - In Adminer, use system `PostgreSQL`, server `postgres`, username/password `invoicely`, and database `invoicely`
-- CLI templates are stored in the local database and reject remote database hosts unless `INVOICELY_ALLOW_REMOTE_TEMPLATES=true` is explicitly set
+- CLI templates and complete invoice records are stored in the local database and reject remote database hosts unless `INVOICELY_ALLOW_REMOTE_TEMPLATES=true` is explicitly set
 
 ## Invoice CLI
 
@@ -204,12 +204,13 @@ The CLI uses the same Zod domain model, Decimal-backed calculations, template na
 # Validate JSON without connecting to PostgreSQL
 bun run invoice validate input --file apps/cli/test/fixtures/example-input.json --json
 
-# Store a named template locally and generate a PDF
+# Store a named template and complete invoice record locally, then render it
 bun run invoice template save --file /private/path/template.json
-bun run invoice generate --template my-template --input /private/path/input.json --output /private/path/invoice.pdf --json
+bun run invoice record create --template my-template --input /private/path/input.json --serial 0123 --json
+bun run invoice record render INV-0123 --output /private/path/invoice.pdf --json
 ```
 
-See [apps/cli/README.md](apps/cli/README.md) for all template, validation, serial, PDF, privacy, JSON-output, and exit-code details. Run `bun run db:push` once after local database setup to create the private template table; generated migration files remain maintainer-managed and are not committed.
+See [apps/cli/README.md](apps/cli/README.md) for all template, invoice-record, validation, serial, PDF, privacy, JSON-output, and exit-code details. Run `bun run db:push` once after local database setup to create the private CLI tables; generated migration files remain maintainer-managed and are not committed.
 
 ## 📜 Available Scripts
 
