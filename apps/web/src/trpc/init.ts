@@ -4,14 +4,19 @@ import { initTRPC } from "@trpc/server";
 import { cache } from "react";
 
 // Add any context you need here ~ Legion
-export const createTRPCContext = cache(async ({}: trpcFetch.FetchCreateContextFnOptions) => {
-  return {};
+export const createTRPCContext = cache(async (options?: trpcFetch.FetchCreateContextFnOptions) => {
+  return {
+    requestHostname: options ? new URL(options.req.url).hostname : null,
+  };
 });
+
+type TRPCContext = Awaited<ReturnType<typeof createTRPCContext>>;
+
 // Avoid exporting the entire t-object
 // since it's not very descriptive.
 // For instance, the use of a t variable
 // is common in i18n libraries.
-const t = initTRPC.create({
+const t = initTRPC.context<TRPCContext>().create({
   transformer: superjsonTransformer,
 });
 // Base router and procedure helpers
