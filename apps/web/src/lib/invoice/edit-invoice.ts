@@ -1,6 +1,6 @@
+import type { EditInvoiceType } from "@/zod-schemas/invoice/edit-invoice-page";
 import { ZodCreateInvoiceSchema } from "@/zod-schemas/invoice/create-invoice";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/constants/issues";
-import { InvoiceTypeType } from "@invoicely/db/schema/invoice";
 import { updateInvoice } from "../indexdb-queries/invoice";
 import { asyncTryCatch } from "../neverthrow/tryCatch";
 import { trpcProxyClient } from "@/trpc/client";
@@ -10,9 +10,25 @@ import { toast } from "sonner";
 export const editInvoice = async (
   invoice: ZodCreateInvoiceSchema,
   user: AuthUser | undefined,
-  type: InvoiceTypeType,
+  type: EditInvoiceType,
   id: string,
 ) => {
+  if (type === "cli") {
+    const updatedInvoice = await trpcProxyClient.invoice.editLocal.mutate({ id, invoice });
+
+    if (!updatedInvoice.success) {
+      toast.error(ERROR_MESSAGES.DATABASE_ERROR, {
+        description: ERROR_MESSAGES.FAILED_TO_EDIT_INVOICE,
+      });
+    } else {
+      toast.success(SUCCESS_MESSAGES.INVOICE_EDITED, {
+        description: SUCCESS_MESSAGES.INVOICE_EDITED_DESCRIPTION,
+      });
+    }
+
+    return;
+  }
+
   if (user && user.allowedSavingData) {
     const insertedInvoice = await trpcProxyClient.invoice.edit.mutate({
       id,

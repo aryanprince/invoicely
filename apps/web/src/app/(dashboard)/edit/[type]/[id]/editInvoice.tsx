@@ -1,7 +1,7 @@
 "use client";
 
+import type { EditInvoiceType } from "@/zod-schemas/invoice/edit-invoice-page";
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/constants/issues";
-import type { InvoiceTypeType } from "@invoicely/db/schema/invoice";
 import InvoicePage from "@/app/(dashboard)/create/invoice/invoice";
 import { getInvoiceById } from "@/lib/indexdb-queries/invoice";
 import PDFLoading from "@/components/layout/pdf/pdf-loading";
@@ -10,7 +10,7 @@ import { Invoice } from "@/types/common/invoice";
 import { trpcProxyClient } from "@/trpc/client";
 
 interface EditInvoiceProps {
-  type: InvoiceTypeType;
+  type: EditInvoiceType;
   id: string;
 }
 
@@ -26,6 +26,9 @@ const EditInvoice = ({ type, id }: EditInvoiceProps) => {
       if (type === "local") {
         // Fetching invoice from localdb
         fetchedInvoice = await getInvoiceById(id);
+      } else if (type === "cli") {
+        // Fetching an invoice created by the local CLI
+        fetchedInvoice = await trpcProxyClient.invoice.getLocal.query({ id });
       } else {
         // Fetching invoice from server
         fetchedInvoice = await trpcProxyClient.invoice.get.query({
@@ -34,7 +37,7 @@ const EditInvoice = ({ type, id }: EditInvoiceProps) => {
       }
 
       if (fetchedInvoice) {
-        if (type === "local") {
+        if (type !== "server") {
           // we need to convert image url and sig url to local base64
           const invoiceFields = fetchedInvoice.invoiceFields;
           const imageBase64 = invoiceFields.companyDetails.logoBase64;

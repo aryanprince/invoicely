@@ -5,11 +5,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EyeScannerIcon, FileDownloadIcon, ImageSparkleIcon, InboxArrowDownIcon } from "@/assets/icons";
+import { EditInvoicePageSchema, type EditInvoiceType } from "@/zod-schemas/invoice/edit-invoice-page";
 import { InvoiceDownloadManagerInstance } from "@/global/instances/invoice/invoice-download-manager";
-import { EditInvoicePageSchema } from "@/zod-schemas/invoice/edit-invoice-page";
 import { ZodCreateInvoiceSchema } from "@/zod-schemas/invoice/create-invoice";
 import { saveInvoiceToDatabase } from "@/lib/invoice/save-invoice";
-import { InvoiceTypeType } from "@invoicely/db/schema/invoice";
 import { editInvoice } from "@/lib/invoice/edit-invoice";
 import InvoiceErrorsModal from "./invoice-errors-modal";
 import { useQueryClient } from "@tanstack/react-query";
@@ -34,11 +33,11 @@ const InvoiceOptions = ({ form }: { form: UseFormReturn<ZodCreateInvoiceSchema> 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const params = useParams() satisfies Params;
-  const formValues = form.getValues();
   const user = useUser();
   const analytics = useAnalytics();
 
   const handleDropDownAction = async (action: InvoiceOptionsProps) => {
+    const formValues = form.getValues();
     await InvoiceDownloadManagerInstance.initialize(formValues);
 
     const { data } = EditInvoicePageSchema.safeParse({
@@ -53,27 +52,27 @@ const InvoiceOptions = ({ form }: { form: UseFormReturn<ZodCreateInvoiceSchema> 
 
     switch (action) {
       case "save-invoice-to-database":
-        SaveInvoiceToDatabase({ formValues, user, type: data?.type, id: data?.id });
+        await SaveInvoiceToDatabase({ formValues, user, type: data?.type, id: data?.id });
         break;
       case "view-pdf":
         InvoiceDownloadManagerInstance.previewPdf();
         break;
       case "download-pdf":
         InvoiceDownloadManagerInstance.downloadPdf();
-        SaveInvoiceToDatabase({ formValues, user, type: data?.type, id: data?.id });
+        await SaveInvoiceToDatabase({ formValues, user, type: data?.type, id: data?.id });
         break;
       case "download-png":
         InvoiceDownloadManagerInstance.downloadPng();
-        SaveInvoiceToDatabase({ formValues, user, type: data?.type, id: data?.id });
+        await SaveInvoiceToDatabase({ formValues, user, type: data?.type, id: data?.id });
         break;
       default:
         break;
     }
 
     // Invalidate Queries
-    queryClient.invalidateQueries({
-      queryKey: ["idb-invoices", ...(user ? [trpc.invoice.list.queryKey()] : [])],
-    });
+    queryClient.invalidateQueries({ queryKey: ["idb-invoices"] });
+    queryClient.invalidateQueries({ queryKey: trpc.invoice.listLocal.queryKey() });
+    if (user) queryClient.invalidateQueries({ queryKey: trpc.invoice.list.queryKey() });
   };
 
   return (
@@ -126,13 +125,13 @@ const SaveInvoiceToDatabase = ({
 }: {
   formValues: ZodCreateInvoiceSchema;
   user: AuthUser | undefined;
-  type?: InvoiceTypeType;
+  type?: EditInvoiceType;
   id?: string;
 }) => {
   if (id && type) {
     // Edit the old invoice
-    editInvoice(formValues, user, type, id);
+    return editInvoice(formValues, user, type, id);
   } else {
-    saveInvoiceToDatabase(formValues, user, type);
+    return saveInvoiceToDatabase(formValues, user, type === "cli" ? undefined : type);
   }
 };

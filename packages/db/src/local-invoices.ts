@@ -136,6 +136,23 @@ export async function getLocalInvoiceRecord(identifier: string): Promise<LocalIn
   return record ? parseInvoiceRecord(record) : null;
 }
 
+export async function updateLocalInvoiceRecord(
+  identifier: string,
+  data: ZodCreateInvoiceSchema,
+): Promise<LocalInvoiceRecord | null> {
+  assertLocalInvoiceDatabase();
+  const invoice = createInvoiceJsonSchema.parse(data);
+  const invoiceNumber = `${invoice.invoiceDetails.prefix}${invoice.invoiceDetails.serialNumber}`;
+  const column = isUuid(identifier) ? localInvoiceRecords.id : localInvoiceRecords.invoiceNumber;
+  const [updatedRecord] = await db
+    .update(localInvoiceRecords)
+    .set({ data: invoice, invoiceNumber, updatedAt: new Date() })
+    .where(eq(column, identifier))
+    .returning();
+
+  return updatedRecord ? parseInvoiceRecord(updatedRecord) : null;
+}
+
 export async function deleteLocalInvoiceRecord(identifier: string): Promise<boolean> {
   assertLocalInvoiceDatabase();
   const column = isUuid(identifier) ? localInvoiceRecords.id : localInvoiceRecords.invoiceNumber;

@@ -142,7 +142,14 @@ export const columns = [
       const { id, type, origin, status, paidAt, invoiceFields } = row.original;
 
       if (origin === "cli") {
-        return <Badge variant="gray">CLI managed</Badge>;
+        return (
+          <Button asChild variant="secondary" size="xs">
+            <Link href={`/edit/cli/${id}`}>
+              <FilePenIcon />
+              <span>View</span>
+            </Link>
+          </Button>
+        );
       }
 
       return (
